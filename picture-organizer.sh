@@ -2,6 +2,11 @@
 
 # See README.md for guide
 
+## Parameters
+
+# Minimum width not to be considered as a thumb
+min_width=640
+    
 # Set counter to make unique file names
 counter=0
 randomtemp=0
@@ -34,10 +39,11 @@ dir_exists_and_is_empty () {
 
 
 #Create temp directory
-mkdir -p ./!
-mkdir -p ./jpg_with_exif_data
-mkdir -p ./jpg_no_exif_data
-mkdir -p ./jpg
+mkdir -p "$curdir"/!
+mkdir -p "$curdir"/jpg_with_exif_data
+mkdir -p "$curdir"/jpg_no_exif_data
+mkdir -p "$curdir"/jpg
+mkdir -p "$curdir"/thumbs
 
 # If you ran this script multiple times and ctrl+c'd it's better to move 
 # out files from temp folders
@@ -50,40 +56,71 @@ if [ $is_dir_empty -eq 1 ]; then
     mkdir -p ./!2;   mv ./!/* ./!2/; fi 
 
 #Find all jpgs and list then in txt with absolute paths
+echo "Searching for jpgs... this may take a while"
 find "`pwd`" -type f -iname "*.jpg" > all_jpg.txt
-
+totaljpgs=cat all_jpg.txt | wc -l
+echo
 # List all files and save filename to $line variable
 cat all_jpg.txt | while read line
 do
 
 # Increase counter
 counter=$((counter+1))
-
+totaljpgs=$(cat all_jpg.txt | wc -l)
+procentdone=$(echo "scale=2; $counter/$totaljpgs*100" | bc)
 # Create variables
 # $line variable has full path
 filename=$(basename "$line")        # e.g. image-1-2-34.jpg
 extension="${line##*.}"             # e.g. jpg
 filename_wo_ext="${filename%%.*}"   # e.g. image-1-2-34
 
-# Check if jpg has original date taken EXIF information
-if exiftool "$line" |grep -q Original
+# Check if jpg has original date taken EXIF information and
+# If picture doesn't have camera model, move to -/! folder
+
+cameramodel=$(exiftool "$line" | grep -e "Camera Model" -m 1 | awk '{print $NF}' 2>&1)
+dateoriginal=$(exiftool "$line" |grep "Date/Time Original")
+#dateoriginal=$(exiftool "$line" |grep -q "Date/Time Original")
+
+echo "[$counter/$totaljpgs ($procentdone%)] $line"
+               
+if [ -n "$dateoriginal" -a -n "$cameramodel" ]
 then
-	echo "$line"
-	echo " --> EXIF Date Taken found!"
-	echo " --> Move to ./jpg_with_exif_data/"
+	echo " --> EXIF Date Original: $dateoriginal"
 
     # Move file to . folder
     # Check if there's is duplicate file, if not
     if [ ! -f "./jpg_with_exif_data/$filename" ]; then
-    
-        # Move file to . folder
-        mv "$line" ./jpg_with_exif_data/
+       
+        # If Image width is less than $min_width let's assume it's a thumbnail
+        imgwidth=$(exiftool "$line" | grep -v "Exif Image Width" | grep "Image Width" -m 1 | awk '{print $NF}' 2>&1)
 
-        # Rename file according to EXIF information
-        exiv2 -r '%Y-%m-%d_%H-%M-%S_'"$counter"'' rename "./jpg_with_exif_data/$filename"
-    
+        if [ $imgwidth -lt $min_width ]
+        then
+            # Move file to folder
+            echo "   --> Image Width $imgwidth < $min_width"
+            echo "   --> and"
+            echo "   --> Camera Model Empty: $cameramodel"
+        	echo " --> Move to ./thumbs/"
+            mv "$line" "$curdir"/thumbs/
+
+            # Rename file according to EXIF information
+            exiv2 -r '%Y-%m-%d_%H-%M-%S_'"$counter"'' rename "./thumbs/$filename"
+        
+        else  
+        
+            # Move file to folder
+            echo "   --> Image Width $imgwidth >= $min_width"
+            echo "   --> and"
+            echo "   --> Camera Model is not Empty: $cameramodel"
+        	echo " --> Move to ./jpg_with_exif_data/"
+            mv "$line" ./jpg_with_exif_data/
+
+            # Rename file according to EXIF information
+            exiv2 -r '%Y-%m-%d_%H-%M-%S_'"$counter"'' rename "./jpg_with_exif_data/$filename"
+        fi
+        
     else
-    
+        # TODO IMAGE SKIPS CHECKS
         # File already exists, add random number in the file name before moving
         # the file. We want to avoid replacing files.
         echo "File ./jpg_with_exif_data/$filename exits, adding random number to file name"
@@ -96,8 +133,9 @@ then
     fi
 
 else
-	echo "$line"
-	echo " --> No EXIF Date Taken!"
+	echo " --> No EXIF Date Original: $dateoriginal"
+    echo " --> or"
+    echo " --> Camera Model is Empty: $cameramodel"
 	echo " --> Move to ./!/"
     
     # Move file to ./! folder
@@ -222,6 +260,7 @@ check_and_delete_empty_dir "$curdir/other"
 check_and_delete_empty_dir "$curdir/raw"
 check_and_delete_empty_dir "$curdir/videos"
 check_and_delete_empty_dir "$curdir/gif"
+check_and_delete_empty_dir "$curdir/thumbs"
 rm all_other2.txt
 
 # Scan for corrupted image files

@@ -25,6 +25,10 @@ Output
 ====================
     - 'jpg' folder
     -- All jpgs file with EXIF information renamed according to EXIF Date Original field.
+    -- All jpgs width 640 or higher (cameras in 2000 took 640 photos...)
+    -- All jpgs with Camera Model not null
+    - 'thumbs' folder
+    -- Same as 'jpg' folder but width less than 640px
     - 'jpg_no_exif_data
     -- All jpgs without EXIF information with their original names expect added random string in case file already exists in the destination location.
     - 'videos' folder
