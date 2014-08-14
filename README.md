@@ -1,20 +1,24 @@
 picture-organizer-sh
 ====================
 
-Scans (find) folder for jpg files, differentiates jpgs without EXIF information, deletes all duplicate files (fdupes) and renames jpg files according to Date Taken/Date Original EXIF information.
+Scans (find) folder for jpg files, differentiates jpgs without EXIF information, deletes all duplicate files (fdupes) and renames jpg files according to Date Taken/Date Original EXIF information and checks for corrupted jpgs.
 
-This is by far an optimized solution. It's slow but it does the job :)
+Does not replace any files. In case of two file names with same names script adds random number at the end of the file. Does not delete any files, only command used to delete is 'rmdir' which doesn't delete directories if they are not empty.
+
+Uses global variables, duh :/ More functions needed too to simplify the code.
+
+This is by far an optimized solution. put all your images from the trip from different cameras to same folder or multiple backups, run script and wait. It's slow but it does the job :)
 
 Dependencies
 ====================
 - mv
 - find
-- fdupe
+- fdupes
 - exiv2
 
 Usage
 ====================
-    $ cd /path/to/picture/collection/20144/trip/helsinki
+    $ cd /path/to/picture/collection/2014/trip/helsinki
     $ ./picture-organizer.sh
     
 Output
@@ -23,6 +27,12 @@ Output
     -- All jpgs file with EXIF information renamed according to EXIF Date Original field.
     - 'jpg_no_exif_data
     -- All jpgs without EXIF information with their original names expect added random string in case file already exists in the destination location.
+    - 'videos' folder
+    -- Files that has MIME type video/*
+    - 'raw'
+    -- Files that have MIME type canon-cr2
+    - 'other'
+    -- All other files (file.*)
 
 e.g.:
 

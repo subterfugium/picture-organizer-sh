@@ -1,4 +1,37 @@
-#!/bin/sh
+#!/bin/bash
+
+# See README.md for guide
+
+# Set counter to make unique file names
+counter=0
+randomtemp=0
+curdir=`pwd`
+
+check_and_delete_empty_dir () { 
+  
+    if [ -d "$1" ]; then
+        #echo "$1" exists
+        shopt -s nullglob dotglob
+        files=("$1"/*)
+        (( ${#files[*]} )) || rmdir "$1" #echo "$1" is empty
+        shopt -u nullglob dotglob
+    fi
+}
+
+dir_exists_and_is_empty () { 
+  
+    is_dir_empty=0
+    
+    if [ -d "$1" ]; then
+        #echo "$1" exists
+        shopt -s nullglob dotglob
+        files=("$1"/*)
+        (( ${#files[*]} )) || is_dir_empty=1
+        shopt -u nullglob dotglob
+    fi
+
+}
+
 
 #Create temp directory
 mkdir -p ./!
@@ -6,19 +39,18 @@ mkdir -p ./jpg_with_exif_data
 mkdir -p ./jpg_no_exif_data
 mkdir -p ./jpg
 
-# If you ran this script multiple times it's better to move out files from
-# temp folders
-mkdir -p ./jpg2
-mkdir -p ./!2
-mv ./jpg/* ./jpg2/
-mv ./!/* ./!2/
+# If you ran this script multiple times and ctrl+c'd it's better to move 
+# out files from temp folders
+dir_exists_and_is_empty "$curdir/jpg"
+if [ $is_dir_empty -eq 1 ]; then
+    mkdir -p ./jpg2; mv ./jpg/* ./jpg2/; fi 
+
+dir_exists_and_is_empty "$curdir/!"
+if [ $is_dir_empty -eq 1 ]; then
+    mkdir -p ./!2;   mv ./!/* ./!2/; fi 
 
 #Find all jpgs and list then in txt with absolute paths
-find "`pwd`" -iname "*.jpg" > all_jpg.txt
-
-# Set counter to make unique file names
-counter=0
-randomtemp=0
+find "`pwd`" -type f -iname "*.jpg" > all_jpg.txt
 
 # List all files and save filename to $line variable
 cat all_jpg.txt | while read line
@@ -42,10 +74,10 @@ then
 
     # Move file to . folder
     # Check if there's is duplicate file, if not
-    if [ ! -f ./jpg_with_exif_data/$filename ]; then
+    if [ ! -f "./jpg_with_exif_data/$filename" ]; then
     
         # Move file to . folder
-        mv -v "$line" ./jpg_with_exif_data/
+        mv "$line" ./jpg_with_exif_data/
 
         # Rename file according to EXIF information
         exiv2 -r '%Y-%m-%d_%H-%M-%S_'"$counter"'' rename "./jpg_with_exif_data/$filename"
@@ -57,7 +89,7 @@ then
         echo "File ./jpg_with_exif_data/$filename exits, adding random number to file name"
         randomtemp="${RANDOM}"
         newfilename="${filename_wo_ext}"_"${randomtemp}.${extension}"
-        mv -v "$line" ./jpg_with_exif_data/$newfilename
+        mv "$line" ./jpg_with_exif_data/$newfilename
 
         # Rename file according to EXIF information
         exiv2 -v -r '%Y-%m-%d_%H-%M-%S_'"$counter"'' rename "./jpg_with_exif_data/$newfilename"
@@ -70,13 +102,13 @@ else
     
     # Move file to ./! folder
     # Check if there's is duplicate file, if not
-    if [ ! -f ./!/$filename ]; then
+    if [ ! -f "./!/$filename" ]; then
         # Move file to . folder
-        mv -v "$line" ./!/
+        mv "$line" ./!/
     else
         # File already exists, add random number in the file name
         echo "File ./!/$filename exits, adding random number to file name"
-        mv -v "$line" ./!/$filename_wo_ext"_"$RANDOM.$extension
+        mv "$line" ./!/$filename_wo_ext"_"$RANDOM.$extension
     fi
 fi
 
@@ -90,7 +122,10 @@ done
 # and all the files without EXIF information are located in ./!/ folder.
 
 # Now the magic part
-touch ./!/*
+dir_exists_and_is_empty "$curdir/!"
+if [ $is_dir_empty -eq 0 ]; then
+    find "$curdir/!" -type f -print0 | xargs -0 touch
+fi
 
 # Run fdupes to delete all duplicate files. If there are duplicate files
 # which has EXIF information and not, duplicates in ./!/ will be deleted
@@ -111,14 +146,122 @@ echo fdupes done.
 #
 
 # Move files from temp folder
-mv ./!/* ./jpg_no_exif_data
-mv ./jpg_with_exif_data/* ./jpg/
+
+dir_exists_and_is_empty "$curdir/!"
+if [ $is_dir_empty -eq 0 ] 
+then
+    mv "$curdir/!/"* "$curdir/jpg_no_exif_data/"
+    #mv -v ./!/* ./jpg_no_exif_data/
+fi
+
+dir_exists_and_is_empty "$curdir/jpg_with_exif_data"
+if [ $is_dir_empty -eq 0 ] 
+then
+    mv "$curdir/jpg_with_exif_data/"* "$curdir/jpg/"
+    #mv ./jpg_with_exif_data/* ./jpg/
+fi
 
 # Delete temp files and folders
-rmdir ./!
-rmdir ./jpg_with_exif_data
-rmdir ./jpg2
-rmdir ./!2
+check_and_delete_empty_dir "$curdir/!"
+check_and_delete_empty_dir "$curdir/jpg_with_exif_data"
+
+if [ -d "`pwd`/jpg2" ]; then rmdir "`pwd`/jpg2" ; fi 
+if [ -d "`pwd`/!2" ]; then rmdir "`pwd`/!2" ; fi 
 rm all_jpg.txt
 
+# Move files other files than jpg to 'other' folder
+mkdir -p "$curdir"/other
+
+find "$curdir" -type f ! -iname "*.jpg" ! -iname "all_other.txt" > all_other.txt
+
+if [ -s all_other.txt ]
+then
+    cat all_other.txt | while read line
+    do
+        mv -v -t "$curdir"/other "$line"
+    done
+    
+fi
+
+rm all_other.txt
+
+if [ -d other ]
+then
+    # Check if other folder contains videos (MIME TYPE: video/*) and move them to
+    # videos folder
+    mkdir -p "`pwd`"/videos
+    mkdir -p "`pwd`"/raw
+    mkdir -p "`pwd`"/gif
+
+    find "`pwd`"/other -type f > all_other2.txt
+    cat all_other2.txt | while read line
+    do
+        if exiftool "$line" |grep -q "video/"
+        then
+            mv -v -t "`pwd`/videos" "$line" 
+        
+        # If MIME type is canon cr2 move to raw folder
+        elif exiftool "$line" |grep -q "x-canon-cr2"
+        then
+            mv -v -t "`pwd`/raw" "$line" 
+ 
+        # If MIME type is image/gif move to gif folder
+        elif exiftool "$line" |grep -q "image/gif"
+        then
+            mv -v -t "`pwd`/gif" "$line" 
+        fi
+    done
+fi
+
+# Try to rename videos according to date
+
+# Delete folder if exists and empty
+check_and_delete_empty_dir "$curdir/jpg"
+check_and_delete_empty_dir "$curdir/jpg_no_exif_data"
+check_and_delete_empty_dir "$curdir/other"
+check_and_delete_empty_dir "$curdir/raw"
+check_and_delete_empty_dir "$curdir/videos"
+check_and_delete_empty_dir "$curdir/gif"
+rm all_other2.txt
+
+# Scan for corrupted image files
+echo
+echo Scan corrupted jpg files...
+find "$curdir" -iname "*.jpg" -type f > "$curdir"/jpgs.txt
+if [ -s jpgs.txt ]
+then
+    echo Lets move corrupted images if any...
+    mkdir -p "$curdir"/corrupted/warnings
+    mkdir -p "$curdir"/corrupted/errors
+
+    cat "$curdir"/jpgs.txt | while read line
+    do
+        if $(jpeginfo -c "$line" | grep -q "ERROR")
+        then
+            echo ERROR: "$line"
+            mv -v "$line" "$curdir"/corrupted/errors/
+        fi
+    done
+    rmdir "$curdir"/corrupted/errors/
+    
+    cat "$curdir"/jpgs.txt | while read line
+    do
+        if $(jpeginfo -c "$line" | grep -q "WARNING")
+        then
+            echo WARNING: "$line"
+            mv "$line" "$curdir"/corrupted/warnings/
+        fi
+    done
+    
+    rmdir "$curdir"/corrupted/warnings/
+    
+    rmdir "$curdir"/corrupted
+    
+    #if [ -d "$curdir"/corrupted ]
+    #then 
+    #    echo Check corrupted folder!
+    #fi
+fi
+
+rm "$curdir"/jpgs.txt
 
