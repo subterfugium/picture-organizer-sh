@@ -67,19 +67,21 @@ do
 # Increase counter
 counter=$((counter+1))
 totaljpgs=$(cat all_jpg.txt | wc -l)
-procentdone=$(echo "scale=2; $counter/$totaljpgs*100" | bc)
+procentdone=$(echo "scale=2;$counter/$totaljpgs*100" | bc)
 # Create variables
 # $line variable has full path
 filename=$(basename "$line")        # e.g. image-1-2-34.jpg
 extension="${line##*.}"             # e.g. jpg
 filename_wo_ext="${filename%%.*}"   # e.g. image-1-2-34
 
+# Save exiftool info to file
+$(exiftool "$line" > "$curdir"/exiftool.txt)
+
 # Check if jpg has original date taken EXIF information and
 # If picture doesn't have camera model, move to -/! folder
 
-cameramodel=$(exiftool "$line" | grep -e "Camera Model" -m 1 | awk '{print $NF}' 2>&1)
-dateoriginal=$(exiftool "$line" |grep "Date/Time Original")
-#dateoriginal=$(exiftool "$line" |grep -q "Date/Time Original")
+cameramodel=$(cat "$curdir"/exiftool.txt | grep -e "Camera Model" -m 1 | awk '{print $NF}' 2>&1)
+dateoriginal=$(cat "$curdir"/exiftool.txt |grep "Date/Time Original")
 
 echo "[$counter/$totaljpgs ($procentdone%)] $line"
                
@@ -92,7 +94,7 @@ then
     if [ ! -f "./jpg_with_exif_data/$filename" ]; then
        
         # If Image width is less than $min_width let's assume it's a thumbnail
-        imgwidth=$(exiftool "$line" | grep -v "Exif Image Width" | grep "Image Width" -m 1 | awk '{print $NF}' 2>&1)
+        imgwidth=$(cat "$curdir"/exiftool.txt | grep -v "Exif Image Width" | grep "Image Width" -m 1 | awk '{print $NF}' 2>&1)
 
         if [ $imgwidth -lt $min_width ]
         then
@@ -154,6 +156,8 @@ echo ----------------------
 echo
 
 done
+
+rm "$curdir"/exiftool.txt
 
 # Now all files with EXIF information (with $RANDOM added to name in case
 # duplicate file names in multiple directories) are located in the . folder
@@ -234,17 +238,31 @@ then
     find "`pwd`"/other -type f > all_other2.txt
     cat all_other2.txt | while read line
     do
-        if exiftool "$line" |grep -q "video/"
+
+    # Save exiftool info to file
+    $(exiftool "$line" > "$curdir"/exiftool.txt)
+    videoexif_date=$(cat "$curdir"/exiftool.txt | grep -e "File Modification Date/Time" -m 1 | awk '{print $(NF-1) " " $NF}' 2>&1)
+    videoexif_mime=$(cat "$curdir"/exiftool.txt | grep -e "MIME Type" -m 1 | awk '{print $NF}' 2>&1)
+    filename=$(basename "$line")        # e.g. image-1-2-34.jpg
+    extension="${line##*.}"             # e.g. jpg
+    
+    echo $videoexif_date
+    echo $videoexif_mime
+    
+        if [[ $videoexif_mime == *video/* ]]
         then
-            mv -v -t "`pwd`/videos" "$line" 
+            newdate=${videoexif_date// /_}
+            newdate2=${newdate//:/-}
+            echo $newdate2.$extension
+            mv -v "$line" "`pwd`/videos/$newdate2.$extension"
         
         # If MIME type is canon cr2 move to raw folder
-        elif exiftool "$line" |grep -q "x-canon-cr2"
+        elif [[ $videoexif_mime == *x-canon-cr* ]]
         then
             mv -v -t "`pwd`/raw" "$line" 
  
         # If MIME type is image/gif move to gif folder
-        elif exiftool "$line" |grep -q "image/gif"
+        elif [[ $videoexif_mime == *image/gif* ]]
         then
             mv -v -t "`pwd`/gif" "$line" 
         fi
